@@ -1,18 +1,21 @@
 import streamlit as st
 import pdfplumber
 import requests
-import json
 import google.generativeai as genai
 
 # --------------------------------------------------
 # Page Configuration
 # --------------------------------------------------
 st.set_page_config(
-    page_title="AI Resume Analyzer",
+    page_title="AI Document Orchestrator",
     layout="centered"
 )
 
-st.title("📄 AI Resume Analyzer & Automated Email System")
+st.title("📄 AI-Powered Document Orchestrator")
+
+st.markdown(
+    "Upload a document, ask questions using AI, and trigger automated workflows."
+)
 
 # --------------------------------------------------
 # Secrets
@@ -24,98 +27,102 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 # --------------------------------------------------
-# Resume Upload
+# Document Upload
 # --------------------------------------------------
 uploaded_file = st.file_uploader(
-    "Upload Resume (PDF only) *",
+    "Upload Resume / Document (PDF only) *",
     type=["pdf"]
 )
 
-resume_text = ""
+document_text = ""
 
 if uploaded_file:
     with pdfplumber.open(uploaded_file) as pdf:
         pages = [page.extract_text() for page in pdf.pages if page.extract_text()]
-        resume_text = "\n".join(pages)
+        document_text = "\n".join(pages)
 
-    st.subheader("📑 Extracted Resume Text")
-    st.text_area("", resume_text, height=220)
+    st.subheader("📑 Extracted Document Text")
+    st.text_area("", document_text, height=250)
 
 # --------------------------------------------------
-# Mandatory Inputs
+# Query Section (AI Answering ONLY)
 # --------------------------------------------------
-st.subheader("🧾 Job Details (All Mandatory)")
+st.subheader("🔎 Ask a question about this document")
+
+user_question = st.text_input(
+    "Enter your question",
+    placeholder="e.g. What is the candidate's contact information?"
+)
+
+# -------------------------------
+# Answer Query Button
+# -------------------------------
+if st.button("Answer Query"):
+
+    if not uploaded_file or not document_text:
+        st.error("❌ Please upload a document first.")
+        st.stop()
+
+    if not user_question:
+        st.error("❌ Please enter a question.")
+        st.stop()
+
+    with st.spinner("🤖 Answering your question..."):
+        question_prompt = f"""
+You are an AI document analyst.
+
+Document:
+{document_text}
+
+User Question:
+{user_question}
+
+Instructions:
+- Answer strictly using the document content.
+- Extract only what is required.
+- If not present, say:
+  "Information not available in the document."
+- Be concise and professional.
+"""
+
+        ai_response = model.generate_content(question_prompt)
+        answer = ai_response.text.strip()
+
+    st.subheader("🧠 AI Answer")
+    st.write(answer)
+
+# --------------------------------------------------
+# Automation Inputs (AFTER QUERY)
+# --------------------------------------------------
+st.subheader("⚙️ Automation Details")
+
+recipient_email = st.text_input(
+    "Recipient Email *",
+    placeholder="example@email.com"
+)
 
 job_description = st.text_area(
     "Job Description (JD) *",
     height=180,
-    placeholder="Paste the full job description here"
-)
-
-recipient_email = st.text_input(
-    "Candidate / Recruiter Email *",
-    placeholder="example@email.com"
+    placeholder="Paste the job description here"
 )
 
 # --------------------------------------------------
-# Trigger Screening (ALL LOGIC HERE)
+# Analyze & Trigger Automation
 # --------------------------------------------------
-if st.button("Analyze Resume & Send Email"):
+if st.button("Analyze & Trigger Automation"):
 
-    if not uploaded_file or not resume_text or not job_description or not recipient_email:
-        st.error("❌ Resume, Job Description, and Email are mandatory.")
+    if not uploaded_file or not document_text:
+        st.error("❌ Document is required.")
         st.stop()
 
-    # -------------------------------
-    # STEP 1 — Resume → Structured JSON
-    # -------------------------------
-    with st.spinner("🧠 Extracting structured resume data..."):
+    if not recipient_email or not job_description:
+        st.error("❌ Email and Job Description are mandatory.")
+        st.stop()
 
-        resume_prompt = f"""
-You are an expert resume parser.
-
-Extract the most important information from the resume below.
-
-Resume Text:
-{resume_text}
-
-Return ONLY valid JSON in the following format:
-{{
-  "name": "",
-  "email": "",
-  "phone": "",
-  "current_role": "",
-  "total_experience": "",
-  "skills": [],
-  "education": [],
-  "projects": [],
-  "summary": ""
-}}
-
-Rules:
-- No markdown
-- No explanations
-- Return pure JSON only
-"""
-
-        response = model.generate_content(resume_prompt)
-        raw_output = response.text.strip()
-
-        try:
-            resume_json = json.loads(raw_output)
-        except json.JSONDecodeError:
-            st.error("❌ Failed to extract structured resume data.")
-            st.text(raw_output)
-            st.stop()
-
-    st.subheader("📄 Structured Resume (JSON)")
-    st.json(resume_json)
-
-    # -------------------------------
-    # STEP 2 — Send to n8n
-    # -------------------------------
+    # ✅ FINAL PAYLOAD (ONLY WHAT YOU WANT)
     payload = {
-        "resume_text": resume_text,
+        "resume_text": document_text,
         "job_description": job_description,
         "recipient_email": recipient_email
     }
