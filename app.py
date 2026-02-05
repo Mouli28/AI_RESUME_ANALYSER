@@ -118,16 +118,25 @@ if st.button("Analyze and report via Email"):
                 st.text(response.text)
                 st.stop()
 
+            
             result = response.json()
 
-            if result.get("status") == "SELECTED":
-                st.success("Candidate is suitable! Selection email sent.")
+            st.subheader("Screening Result")
 
-            elif result.get("status") == "REJECTED":
-                st.warning("Candidate not suitable. Rejection email sent.")
+            if result["status"] == "SELECTED":
+                st.success("✅ Candidate Selected")
+                st.write("**Email Sent:**")
+                st.write("________________________________")
+                st.write(result["selection_email"])
 
             else:
-                st.info("Resume processed.")
+                st.error("❌ Candidate Rejected")
+                st.write("**Email Sent:**")
+                st.write("________________________________")
+                st.write(result["rejection_email"])
+                st.write("**Recommendation**")
+                st.write("________________________________")
+                st.write(result["recomendation"])
 
         except Exception as e:
             st.error("Failed to connect to automation workflow.")
